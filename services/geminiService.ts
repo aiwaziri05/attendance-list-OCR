@@ -1,32 +1,50 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type } from '@google/genai';
 import type { AttendanceRecord } from '../types';
 
-// FIX: Per coding guidelines, initialize GoogleGenAI directly with process.env.API_KEY.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Get API key from Vite environment variables
+// Vite exposes env vars prefixed with VITE_ to client code via import.meta.env
+const getApiKey = (): string => {
+	const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+
+	if (!apiKey) {
+		throw new Error('Gemini API key is not set. Please set VITE_GEMINI_API_KEY in your .env file and restart the dev server.');
+	}
+
+	return apiKey;
+};
+
+// Lazy initialization of the AI client to avoid errors if API key is not set at module load time
+let aiInstance: GoogleGenAI | null = null;
+
+const getAI = (): GoogleGenAI => {
+	if (!aiInstance) {
+		const apiKey = getApiKey();
+		aiInstance = new GoogleGenAI({ apiKey });
+	}
+	return aiInstance;
+};
 
 const responseSchema = {
-    type: Type.ARRAY,
-    items: {
-        type: Type.OBJECT,
-        properties: {
-            id: { type: Type.STRING },
-            firstname: { type: Type.STRING },
-            middle: { type: Type.STRING },
-            lastname: { type: Type.STRING },
-            sex: { type: Type.STRING },
-            do_you_have_any_disability: { type: Type.STRING },
-            if_yes_type_of_disability: { type: Type.STRING },
-            home_address: { type: Type.STRING },
-            phone_no: { type: Type.STRING },
-            email: { type: Type.STRING },
-            highest_qualification: { type: Type.STRING },
-            employment_type: { type: Type.STRING },
-            employment_status: { type: Type.STRING },
-        },
-        required: [
-            "id", "firstname", "lastname", "sex", "home_address", "phone_no", "email"
-        ]
-    }
+	type: Type.ARRAY,
+	items: {
+		type: Type.OBJECT,
+		properties: {
+			id: { type: Type.STRING },
+			firstname: { type: Type.STRING },
+			middle: { type: Type.STRING },
+			lastname: { type: Type.STRING },
+			sex: { type: Type.STRING },
+			do_you_have_any_disability: { type: Type.STRING },
+			if_yes_type_of_disability: { type: Type.STRING },
+			home_address: { type: Type.STRING },
+			phone_no: { type: Type.STRING },
+			email: { type: Type.STRING },
+			highest_qualification: { type: Type.STRING },
+			employment_type: { type: Type.STRING },
+			employment_status: { type: Type.STRING },
+		},
+		required: ['id', 'firstname', 'lastname', 'sex', 'home_address', 'phone_no', 'email'],
+	},
 };
 
 const prompt = `
@@ -58,38 +76,39 @@ Key Instructions:
 `;
 
 export async function extractDataFromImage(base64Image: string, mimeType: string): Promise<AttendanceRecord[]> {
-    try {
-        const imagePart = {
-            inlineData: {
-                data: base64Image,
-                mimeType: mimeType,
-            },
-        };
+	try {
+		const imagePart = {
+			inlineData: {
+				data: base64Image,
+				mimeType: mimeType,
+			},
+		};
 
-        const textPart = {
-            text: prompt,
-        };
-        
-        // FIX: Reordered parts to place the image before the text prompt, as recommended for multimodal inputs.
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: responseSchema,
-            },
-        });
-        
-        const jsonString = response.text;
+		const textPart = {
+			text: prompt,
+		};
 
-        if (!jsonString) {
-             throw new Error("API returned an empty response.");
-        }
-        
-        const parsedData = JSON.parse(jsonString);
-        return parsedData as AttendanceRecord[];
-    } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        throw new Error("Failed to extract data. The document might not be clear or in a supported format.");
-    }
+		// FIX: Reordered parts to place the image before the text prompt, as recommended for multimodal inputs.
+		const ai = getAI();
+		const response = await ai.models.generateContent({
+			model: 'gemini-2.5-flash',
+			contents: { parts: [imagePart, textPart] },
+			config: {
+				responseMimeType: 'application/json',
+				responseSchema: responseSchema,
+			},
+		});
+
+		const jsonString = response.text;
+
+		if (!jsonString) {
+			throw new Error('API returned an empty response.');
+		}
+
+		const parsedData = JSON.parse(jsonString);
+		return parsedData as AttendanceRecord[];
+	} catch (error) {
+		console.error('Error calling Gemini API:', error);
+		throw new Error('Failed to extract data. The document might not be clear or in a supported format.');
+	}
 }
