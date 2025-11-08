@@ -1,0 +1,5 @@
+{
+  "name": "Attendance List OCR",
+  "description": "A modern web-based Attendance List OCR System that allows users to upload images or PDF files of attendance records. The system uses Gemini for OCR and data extraction, structures the data, and displays it in a preview table for editing and export.",
+  "requestFramePermissions": []
+}
